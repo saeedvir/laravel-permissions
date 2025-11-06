@@ -19,9 +19,9 @@ class PermissionCache
     /**
      * Get cache store from config.
      */
-    protected function getStore(): string
+    protected function getStore(): ?string
     {
-        return config('permissions.cache.store', 'default');
+        return config('permissions.cache.store');
     }
 
     /**
@@ -66,7 +66,8 @@ class PermissionCache
         }
 
         // Only Redis, Memcached, and Array drivers support tags
-        $driver = Cache::store($this->getStore())->getStore();
+        $store = $this->getStore();
+        $driver = $store ? Cache::store($store)->getStore() : Cache::getStore();
         return method_exists($driver, 'tags');
     }
 
@@ -95,7 +96,10 @@ class PermissionCache
             return $default;
         }
 
-        return Cache::store($this->getStore())->get(
+        $store = $this->getStore();
+        $cache = $store ? Cache::store($store) : Cache::getFacadeRoot();
+        
+        return $cache->get(
             $this->getCacheKey($key),
             $default
         );
@@ -112,7 +116,10 @@ class PermissionCache
 
         $ttl = $ttl ?? $this->getExpiration();
 
-        return Cache::store($this->getStore())->put(
+        $store = $this->getStore();
+        $cache = $store ? Cache::store($store) : Cache::getFacadeRoot();
+        
+        return $cache->put(
             $this->getCacheKey($key),
             $value,
             $ttl
@@ -130,15 +137,18 @@ class PermissionCache
 
         $ttl = $ttl ?? $this->getExpiration();
 
+        $store = $this->getStore();
+        $cache = $store ? Cache::store($store) : Cache::getFacadeRoot();
+        
         if ($this->usesTags()) {
-            return Cache::store($this->getStore())->tags($this->getCacheTags())->remember(
+            return $cache->tags($this->getCacheTags())->remember(
                 $this->getCacheKey($key),
                 $ttl,
                 $callback
             );
         }
 
-        return Cache::store($this->getStore())->remember(
+        return $cache->remember(
             $this->getCacheKey($key),
             $ttl,
             $callback
@@ -154,13 +164,16 @@ class PermissionCache
             return false;
         }
 
+        $store = $this->getStore();
+        $cache = $store ? Cache::store($store) : Cache::getFacadeRoot();
+        
         if ($this->usesTags()) {
-            return Cache::store($this->getStore())->tags($this->getCacheTags())->forget(
+            return $cache->tags($this->getCacheTags())->forget(
                 $this->getCacheKey($key)
             );
         }
 
-        return Cache::store($this->getStore())->forget(
+        return $cache->forget(
             $this->getCacheKey($key)
         );
     }
@@ -175,15 +188,18 @@ class PermissionCache
             return false;
         }
 
+        $store = $this->getStore();
+        $cache = $store ? Cache::store($store) : Cache::getFacadeRoot();
+        
         // If using cache tags (Redis), flush by tag - MUCH better performance
         if ($this->usesTags()) {
-            Cache::store($this->getStore())->tags($this->getCacheTags())->flush();
+            $cache->tags($this->getCacheTags())->flush();
             return true;
         }
 
         // Fallback: Clear the entire cache store (not ideal but works)
         // In production, you should use Redis with tags
-        Cache::store($this->getStore())->flush();
+        $cache->flush();
         
         return true;
     }
