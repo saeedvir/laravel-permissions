@@ -200,37 +200,61 @@ trait HasRolesAndPermissions
 
         $cache = app(PermissionCache::class);
         
-        // Get all user permissions (direct + from roles)
-        $userPermissions = $cache->remember(
-            $cache->getUserPermissionsKey($this->id),
-            function () use ($cache) {
-                // Direct permissions - filter expired ones
-                $directPermissions = $this->getActivePermissions()->pluck('slug')->toArray();
-                
-                // Permissions from roles
-                $rolePermissions = [];
-                if (config('permissions.performance.eager_loading', true)) {
-                    $rolePermissions = $this->roles()
-                        ->with('permissions')
-                        ->get()
-                        ->pluck('permissions')
-                        ->flatten()
-                        ->pluck('slug')
-                        ->unique()
-                        ->toArray();
-                } else {
-                    foreach ($this->roles as $role) {
-                        $rolePerms = $cache->remember(
-                            $cache->getRolePermissionsKey($role->id),
-                            fn() => $role->permissions->pluck('slug')->toArray()
-                        );
-                        $rolePermissions = array_merge($rolePermissions, $rolePerms);
+        // Get all user permissions (direct + from roles) - with or without cache
+        if ($cache->isPermissionCacheEnabled()) {
+            $userPermissions = $cache->remember(
+                $cache->getUserPermissionsKey($this->id),
+                function () use ($cache) {
+                    // Direct permissions - filter expired ones
+                    $directPermissions = $this->getActivePermissions()->pluck('slug')->toArray();
+                    
+                    // Permissions from roles
+                    $rolePermissions = [];
+                    if (config('permissions.performance.eager_loading', true)) {
+                        $rolePermissions = $this->roles()
+                            ->with('permissions')
+                            ->get()
+                            ->pluck('permissions')
+                            ->flatten()
+                            ->pluck('slug')
+                            ->unique()
+                            ->toArray();
+                    } else {
+                        foreach ($this->roles as $role) {
+                            $rolePerms = $cache->remember(
+                                $cache->getRolePermissionsKey($role->id),
+                                fn() => $role->permissions->pluck('slug')->toArray()
+                            );
+                            $rolePermissions = array_merge($rolePermissions, $rolePerms);
+                        }
                     }
+                    
+                    return array_unique(array_merge($directPermissions, $rolePermissions));
                 }
-                
-                return array_unique(array_merge($directPermissions, $rolePermissions));
+            );
+        } else {
+            // Direct query without cache
+            $directPermissions = $this->getActivePermissions()->pluck('slug')->toArray();
+            
+            $rolePermissions = [];
+            if (config('permissions.performance.eager_loading', true)) {
+                $rolePermissions = $this->roles()
+                    ->with('permissions')
+                    ->get()
+                    ->pluck('permissions')
+                    ->flatten()
+                    ->pluck('slug')
+                    ->unique()
+                    ->toArray();
+            } else {
+                foreach ($this->roles as $role) {
+                    $rolePerms = $role->permissions->pluck('slug')->toArray();
+                    $rolePermissions = array_merge($rolePermissions, $rolePerms);
+                }
             }
-        );
+            
+            $userPermissions = array_unique(array_merge($directPermissions, $rolePermissions));
+        }
 
         $permissionSlug = $permission instanceof Permission 
             ? $permission->slug 
