@@ -4,7 +4,7 @@
 
 # Laravel Permissions Package
 
-A highly optimized role and permission package for Laravel 11/12 with advanced features including multiple guards, wildcard permissions, super admin, expirable permissions, and Laravel Gate integration.
+A highly optimized role and permission package for Laravel 11/12 with advanced features including multiple guards, wildcard permissions, super admin, expirable permissions, expirable roles, and Laravel Gate integration.
 
 ## ✨ Features
 
@@ -21,6 +21,7 @@ A highly optimized role and permission package for Laravel 11/12 with advanced f
 -   🎯 **Wildcard Permissions** - Use `posts.*` to grant all post permissions
 -   👑 **Super Admin Role** - Automatically has ALL permissions
 -   ⏰ **Expirable Permissions** - Set expiration dates on permissions
+-   ⏰ **Expirable Roles** - Set expiration dates on roles (NEW in v2.1.0)
 -   🔗 **Laravel Gate Integration** - Use `$user->can()` natively
 -   📊 **Query Scopes** - `User::role('admin')->get()`
 -   🔒 **Database Transactions** - Atomic permission changes
@@ -202,6 +203,10 @@ $user->assignRole('admin', 'editor');
 // Or using Role models
 $user->assignRole($admin, $editor);
 
+// Assign role with expiration (NEW in v2.1.0)
+$user->assignRoleUntil('premium', now()->addMonth());
+$user->assignRoleUntil('trial-user', now()->addDays(7));
+
 // Remove role
 $user->removeRole('editor');
 
@@ -220,6 +225,9 @@ $user->givePermissionTo('create-post');
 // Give multiple permissions
 $user->givePermissionTo('create-post', 'edit-post');
 
+// Give permission with expiration
+$user->givePermissionToUntil('create-post', now()->addWeek());
+
 // Revoke permission
 $user->revokePermissionTo('edit-post');
 
@@ -232,7 +240,7 @@ $user->syncPermissions(['create-post']);
 ```php
 $user = User::find(1);
 
-// Check if user has role
+// Check if user has role (automatically filters expired roles)
 if ($user->hasRole('admin')) {
     // User is admin
 }
@@ -247,7 +255,7 @@ if ($user->hasAllRoles(['admin', 'editor'])) {
     // User has all these roles
 }
 
-// Check permission (includes permissions from roles)
+// Check permission (includes permissions from active roles, filters expired)
 if ($user->hasPermission('create-post')) {
     // User can create posts
 }
@@ -262,7 +270,7 @@ if ($user->hasAllPermissions(['create-post', 'edit-post'])) {
     // User has all these permissions
 }
 
-// Get all user permissions (direct + from roles)
+// Get all user permissions (direct + from active roles)
 $permissions = $user->getAllPermissions();
 ```
 
@@ -284,6 +292,157 @@ $permissions = $user->getAllPermissions();
 @haspermission('create-post')
     <a href="/posts/create">Create Post</a>
 @endhaspermission
+```
+
+## Advanced Features
+
+### Expirable Roles (NEW in v2.1.0)
+
+Assign roles with expiration dates for temporary access:
+
+#### Enable Feature
+
+In `config/permissions.php` or `.env`:
+
+```php
+'expirable_roles' => [
+    'enabled' => env('PERMISSION_EXPIRABLE_ROLES_ENABLED', false),
+],
+```
+
+Or in `.env`:
+```env
+PERMISSION_EXPIRABLE_ROLES_ENABLED=true
+```
+
+#### Usage Examples
+
+```php
+use Carbon\Carbon;
+
+// Assign temporary role
+$user->assignRoleUntil('premium', now()->addMonth());
+$user->assignRoleUntil('trial-user', now()->addDays(7));
+$user->assignRoleUntil('seasonal-mod', Carbon::parse('2025-12-31'));
+
+// Using role ID or model
+$user->assignRoleUntil(1, now()->addWeeks(2));
+$role = Role::where('slug', 'editor')->first();
+$user->assignRoleUntil($role, now()->addMonths(6));
+
+// All role checks automatically filter expired roles
+$user->hasRole('premium'); // Returns false after expiration
+$user->hasPermission('premium-feature'); // Also checks role expiration
+
+// Query scopes also respect expiration
+User::role('premium')->get(); // Only users with active premium role
+```
+
+**How it works:**
+- Expired roles are automatically filtered from all role checks
+- Permissions from expired roles are not granted
+- Roles with `null` expires_at never expire (permanent)
+- Works seamlessly with caching system
+
+### Expirable Permissions
+
+Similar to expirable roles, you can set expiration on direct permissions:
+
+#### Enable Feature
+
+```php
+'expirable_permissions' => [
+    'enabled' => env('PERMISSION_EXPIRABLE_ENABLED', false),
+],
+```
+
+#### Usage Examples
+
+```php
+// Give temporary permission
+$user->givePermissionToUntil('create-post', now()->addWeek());
+$user->givePermissionToUntil('beta-feature', now()->addDays(30));
+
+// Permission automatically expires
+$user->hasPermission('create-post'); // Returns false after expiration
+```
+
+### Wildcard Permissions
+
+Use wildcards for flexible permission matching:
+
+#### Enable Feature
+
+```php
+'wildcard_permissions' => [
+    'enabled' => env('PERMISSION_WILDCARD_ENABLED', false),
+],
+```
+
+#### Usage Examples
+
+```php
+// Grant wildcard permission
+$role->givePermissionTo('posts.*');
+
+// Matches all post permissions
+$user->hasPermission('posts.create'); // true
+$user->hasPermission('posts.edit');   // true
+$user->hasPermission('posts.delete'); // true
+```
+
+### Super Admin Role
+
+Designate a role that automatically has all permissions:
+
+#### Enable Feature
+
+```php
+'super_admin' => [
+    'enabled' => env('PERMISSION_SUPER_ADMIN_ENABLED', false),
+    'role_slug' => env('PERMISSION_SUPER_ADMIN_SLUG', 'super-admin'),
+],
+```
+
+#### Usage
+
+```php
+// Assign super admin role
+$user->assignRole('super-admin');
+
+// User now has ALL permissions
+$user->hasPermission('any-permission'); // Always true
+
+// Check if user is super admin
+if ($user->isSuperAdmin()) {
+    // User has unlimited access
+}
+```
+
+### Query Scopes
+
+Powerful query scopes for filtering users:
+
+```php
+// Get users with specific role
+User::role('admin')->get();
+User::role(['admin', 'editor'])->get();
+
+// Get users with specific permission
+User::permission('create-post')->get();
+User::permission(['create-post', 'edit-post'])->get();
+
+// Get users without role
+User::withoutRole('banned')->get();
+
+// Get users without permission
+User::withoutPermission('delete-post')->get();
+
+// Combine scopes
+User::role('editor')
+    ->permission('create-post')
+    ->where('status', 'active')
+    ->get();
 ```
 
 ## Middleware Usage

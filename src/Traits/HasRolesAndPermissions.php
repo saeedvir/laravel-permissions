@@ -13,16 +13,24 @@ trait HasRolesAndPermissions
 {
     /**
      * User belongs to many roles (polymorphic).
+     * IMPROVED: Now supports expirable roles via pivot.
      */
     public function roles(): BelongsToMany
     {
-        return $this->morphToMany(
+        $relation = $this->morphToMany(
             config('permissions.models.role', Role::class),
             'model',
             config('permissions.tables.model_has_roles', 'model_has_roles'),
             'model_id',
             'role_id'
         )->withTimestamps();
+
+        // Add expires_at pivot column if expirable roles are enabled
+        if (config('permissions.expirable_roles.enabled', false)) {
+            $relation->withPivot('expires_at');
+        }
+
+        return $relation;
     }
 
     /**
@@ -133,6 +141,7 @@ trait HasRolesAndPermissions
 
     /**
      * Check if user has role.
+     * IMPROVED: Now supports expirable roles.
      */
     public function hasRole(string|int|Role|array $roles): bool
     {
@@ -147,14 +156,14 @@ trait HasRolesAndPermissions
 
         $cache = app(PermissionCache::class);
         
-        // Get user roles (with or without cache based on config)
+        // Get user roles (with or without cache based on config) - filter expired ones
         if ($cache->isRoleCacheEnabled()) {
             $userRoles = $cache->remember(
                 $cache->getUserRolesKey($this->id),
-                fn() => $this->roles->pluck('slug')->toArray()
+                fn() => $this->getActiveRoles()->pluck('slug')->toArray()
             );
         } else {
-            $userRoles = $this->roles->pluck('slug')->toArray();
+            $userRoles = $this->getActiveRoles()->pluck('slug')->toArray();
         }
 
         $roleSlug = $roles instanceof Role 
@@ -208,19 +217,18 @@ trait HasRolesAndPermissions
                     // Direct permissions - filter expired ones
                     $directPermissions = $this->getActivePermissions()->pluck('slug')->toArray();
                     
-                    // Permissions from roles
+                    // Permissions from roles - filter expired roles
                     $rolePermissions = [];
                     if (config('permissions.performance.eager_loading', true)) {
-                        $rolePermissions = $this->roles()
-                            ->with('permissions')
-                            ->get()
+                        $rolePermissions = $this->getActiveRoles()
+                            ->load('permissions')
                             ->pluck('permissions')
                             ->flatten()
                             ->pluck('slug')
                             ->unique()
                             ->toArray();
                     } else {
-                        foreach ($this->roles as $role) {
+                        foreach ($this->getActiveRoles() as $role) {
                             $rolePerms = $cache->remember(
                                 $cache->getRolePermissionsKey($role->id),
                                 fn() => $role->permissions->pluck('slug')->toArray()
@@ -233,21 +241,20 @@ trait HasRolesAndPermissions
                 }
             );
         } else {
-            // Direct query without cache
+            // Direct query without cache - filter expired permissions and roles
             $directPermissions = $this->getActivePermissions()->pluck('slug')->toArray();
             
             $rolePermissions = [];
             if (config('permissions.performance.eager_loading', true)) {
-                $rolePermissions = $this->roles()
-                    ->with('permissions')
-                    ->get()
+                $rolePermissions = $this->getActiveRoles()
+                    ->load('permissions')
                     ->pluck('permissions')
                     ->flatten()
                     ->pluck('slug')
                     ->unique()
                     ->toArray();
             } else {
-                foreach ($this->roles as $role) {
+                foreach ($this->getActiveRoles() as $role) {
                     $rolePerms = $role->permissions->pluck('slug')->toArray();
                     $rolePermissions = array_merge($rolePermissions, $rolePerms);
                 }
@@ -342,6 +349,7 @@ trait HasRolesAndPermissions
 
     /**
      * Get all permissions (direct + from roles).
+     * IMPROVED: Now filters expired permissions and roles.
      */
     public function getAllPermissions(): Collection
     {
@@ -350,13 +358,12 @@ trait HasRolesAndPermissions
         $permissionIds = $cache->remember(
             $cache->getUserPermissionsKey($this->id) . '_ids',
             function () {
-                // Direct permissions
-                $directPermissionIds = $this->permissions->pluck('id')->toArray();
+                // Direct permissions - filter expired ones
+                $directPermissionIds = $this->getActivePermissions()->pluck('id')->toArray();
                 
-                // Permissions from roles
-                $rolePermissionIds = $this->roles()
-                    ->with('permissions')
-                    ->get()
+                // Permissions from roles - filter expired roles
+                $rolePermissionIds = $this->getActiveRoles()
+                    ->load('permissions')
                     ->pluck('permissions')
                     ->flatten()
                     ->pluck('id')
@@ -373,6 +380,7 @@ trait HasRolesAndPermissions
     /**
      * NEW: Check if user is super admin.
      * Super admin has all permissions automatically.
+     * IMPROVED: Now checks for expired roles.
      */
     public function isSuperAdmin(): bool
     {
@@ -442,18 +450,76 @@ trait HasRolesAndPermissions
     }
 
     /**
+     * NEW: Assign role with expiration date.
+     */
+    public function assignRoleUntil(string|int|Role $role, \DateTimeInterface $expiresAt): self
+    {
+        if (!config('permissions.expirable_roles.enabled', false)) {
+            throw new \Exception('Expirable roles are not enabled in config.');
+        }
+
+        $roleId = $role instanceof Role 
+            ? $role->id 
+            : (is_numeric($role) 
+                ? $role 
+                : Role::where('slug', $role)->firstOrFail()->id);
+
+        $this->roles()->syncWithoutDetaching([
+            $roleId => ['expires_at' => $expiresAt]
+        ]);
+
+        // Clear user cache
+        app(PermissionCache::class)->clearUserCache($this->id);
+
+        return $this;
+    }
+
+    /**
+     * NEW: Get only active (non-expired) roles.
+     */
+    protected function getActiveRoles()
+    {
+        if (!config('permissions.expirable_roles.enabled', false)) {
+            return $this->roles;
+        }
+
+        return $this->roles()
+            ->where(function ($query) {
+                $query->whereNull(config('permissions.tables.model_has_roles') . '.expires_at')
+                      ->orWhere(config('permissions.tables.model_has_roles') . '.expires_at', '>', now());
+            })->get();
+    }
+
+    /**
      * NEW: Model scope - Get users with specific role.
+     * IMPROVED: Now filters expired roles.
      */
     public function scopeRole($query, string|array $roles)
     {
         if (is_array($roles)) {
             return $query->whereHas('roles', function ($q) use ($roles) {
                 $q->whereIn('slug', $roles);
+                
+                // Filter expired roles if enabled
+                if (config('permissions.expirable_roles.enabled', false)) {
+                    $q->where(function ($subQuery) {
+                        $subQuery->whereNull(config('permissions.tables.model_has_roles') . '.expires_at')
+                                 ->orWhere(config('permissions.tables.model_has_roles') . '.expires_at', '>', now());
+                    });
+                }
             });
         }
 
         return $query->whereHas('roles', function ($q) use ($roles) {
             $q->where('slug', $roles);
+            
+            // Filter expired roles if enabled
+            if (config('permissions.expirable_roles.enabled', false)) {
+                $q->where(function ($subQuery) {
+                    $subQuery->whereNull(config('permissions.tables.model_has_roles') . '.expires_at')
+                             ->orWhere(config('permissions.tables.model_has_roles') . '.expires_at', '>', now());
+                });
+            }
         });
     }
 
@@ -475,17 +541,34 @@ trait HasRolesAndPermissions
 
     /**
      * NEW: Model scope - Get users without specific role.
+     * IMPROVED: Now filters expired roles.
      */
     public function scopeWithoutRole($query, string|array $roles)
     {
         if (is_array($roles)) {
             return $query->whereDoesntHave('roles', function ($q) use ($roles) {
                 $q->whereIn('slug', $roles);
+                
+                // Filter expired roles if enabled
+                if (config('permissions.expirable_roles.enabled', false)) {
+                    $q->where(function ($subQuery) {
+                        $subQuery->whereNull(config('permissions.tables.model_has_roles') . '.expires_at')
+                                 ->orWhere(config('permissions.tables.model_has_roles') . '.expires_at', '>', now());
+                    });
+                }
             });
         }
 
         return $query->whereDoesntHave('roles', function ($q) use ($roles) {
             $q->where('slug', $roles);
+            
+            // Filter expired roles if enabled
+            if (config('permissions.expirable_roles.enabled', false)) {
+                $q->where(function ($subQuery) {
+                    $subQuery->whereNull(config('permissions.tables.model_has_roles') . '.expires_at')
+                             ->orWhere(config('permissions.tables.model_has_roles') . '.expires_at', '>', now());
+                });
+            }
         });
     }
 
