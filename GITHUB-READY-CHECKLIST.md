@@ -112,7 +112,7 @@ git commit -m "Initial release v2.0.0 - Production ready"
 ### Step 3: Push to GitHub
 
 ```bash
-git remote add origin https://github.com/YOUR_USERNAME/laravel-permissions.git
+git remote add origin https://github.com/saeedvir/laravel-permissions.git
 git branch -M main
 git push -u origin main
 ```

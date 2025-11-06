@@ -1,3 +1,7 @@
+[![Latest Version](https://img.shields.io/packagist/v/saeedvir/laravel-permissions.svg?style=flat-square)](https://packagist.org/packages/saeedvir/laravel-permissions)
+[![Total Downloads](https://img.shields.io/packagist/dt/saeedvir/laravel-permissions.svg?style=flat-square)](https://packagist.org/packages/saeedvir/laravel-permissions)
+[![License](https://img.shields.io/packagist/l/saeedvir/laravel-permissions.svg?style=flat-square)](https://packagist.org/packages/saeedvir/laravel-permissions)
+
 # Laravel Permissions Package
 
 A highly optimized role and permission package for Laravel 11/12 with caching support and flexible configuration.
