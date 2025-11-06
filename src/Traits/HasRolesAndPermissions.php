@@ -147,10 +147,15 @@ trait HasRolesAndPermissions
 
         $cache = app(PermissionCache::class);
         
-        $userRoles = $cache->remember(
-            $cache->getUserRolesKey($this->id),
-            fn() => $this->roles->pluck('slug')->toArray()
-        );
+        // Get user roles (with or without cache based on config)
+        if ($cache->isRoleCacheEnabled()) {
+            $userRoles = $cache->remember(
+                $cache->getUserRolesKey($this->id),
+                fn() => $this->roles->pluck('slug')->toArray()
+            );
+        } else {
+            $userRoles = $this->roles->pluck('slug')->toArray();
+        }
 
         $roleSlug = $roles instanceof Role 
             ? $roles->slug 
