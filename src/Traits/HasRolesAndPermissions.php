@@ -12,12 +12,13 @@ use Saeedvir\LaravelPermissions\Services\PermissionCache;
 trait HasRolesAndPermissions
 {
     /**
-     * User belongs to many roles.
+     * User belongs to many roles (polymorphic).
      */
     public function roles(): BelongsToMany
     {
-        return $this->belongsToMany(
+        return $this->morphToMany(
             config('permissions.models.role', Role::class),
+            'model',
             config('permissions.tables.model_has_roles', 'model_has_roles'),
             'model_id',
             'role_id'
@@ -25,13 +26,14 @@ trait HasRolesAndPermissions
     }
 
     /**
-     * User belongs to many permissions (direct permissions).
+     * User belongs to many permissions (direct permissions - polymorphic).
      * IMPROVED: Now supports expirable permissions via pivot.
      */
     public function permissions(): BelongsToMany
     {
-        $relation = $this->belongsToMany(
+        $relation = $this->morphToMany(
             config('permissions.models.permission', Permission::class),
+            'model',
             config('permissions.tables.model_has_permissions', 'model_has_permissions'),
             'model_id',
             'permission_id'
