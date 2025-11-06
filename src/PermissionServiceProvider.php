@@ -137,6 +137,14 @@ class PermissionServiceProvider extends ServiceProvider
         $blade->directive('endhasallpermissions', function () {
             return '<?php endif; ?>';
         });
+
+        // @isSuperAdmin
+        $blade->directive('isSuperAdmin', function () {
+            return "<?php if(auth()->check() && auth()->user()->isSuperAdmin()): ?>";
+        });
+        $blade->directive('endisSuperAdmin', function () {
+            return '<?php endif; ?>';
+        });
     }
 
     /**
