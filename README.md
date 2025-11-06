@@ -4,45 +4,73 @@
 
 # Laravel Permissions Package
 
-A highly optimized role and permission package for Laravel 11/12 with caching support and flexible configuration.
+A highly optimized role and permission package for Laravel 11/12 with advanced features including multiple guards, wildcard permissions, super admin, expirable permissions, and Laravel Gate integration.
 
-## Features
+## ✨ Features
+
+### Core Features
 
 -   ✅ **Role-based Access Control (RBAC)**
 -   ✅ **Permission Management**
 -   ✅ **Direct User Permissions**
--   ✅ **Configurable Caching** for optimal performance
--   ✅ **Multiple Database Support**
--   ✅ **Middleware Protection**
--   ✅ **Memory Optimized**
--   ✅ **Eager Loading Support**
+-   ✅ **Polymorphic Relationships** - Works with any model
+
+### Advanced Features
+
+-   🚀 **Multiple Guards Support** - Separate permissions for web, api, admin
+-   🎯 **Wildcard Permissions** - Use `posts.*` to grant all post permissions
+-   👑 **Super Admin Role** - Automatically has ALL permissions
+-   ⏰ **Expirable Permissions** - Set expiration dates on permissions
+-   🔗 **Laravel Gate Integration** - Use `$user->can()` natively
+-   📊 **Query Scopes** - `User::role('admin')->get()`
+-   🔒 **Database Transactions** - Atomic permission changes
+
+### Performance
+
+-   ⚡ **Advanced Caching** with Redis tags support
+-   💾 **Memory Optimized** with eager loading
+-   🚄 **Database Optimized** with composite indexes
+-   📦 **Multiple Database Support**
+
+### Developer Experience
+
+-   🛡️ **Middleware Protection** for routes
+-   🎨 **Blade Directives** for templates
+-   📝 **Comprehensive Documentation**
 -   ✅ **Laravel 11/12 Compatible**
+
+## Requirements
+
+-   PHP 8.2 or higher
+-   Laravel 11.x or 12.x
+-   Composer
+
+## Quick Start
+
+```bash
+# Install package
+composer require saeedvir/laravel-permissions
+
+# Publish config
+php artisan vendor:publish --tag=permissions-config
+
+# Run migrations
+php artisan migrate
+
+# Add trait to User model and start using!
+```
 
 ## Installation
 
-### Step 1: Add Package to Composer
+### Step 1: Install via Composer
 
-Add the package to your main project's `composer.json`:
-
-```json
-{
-    "repositories": [
-        {
-            "type": "path",
-            "url": "./packages/saeedvir/laravel-permissions"
-        }
-    ],
-    "require": {
-        "saeedvir/laravel-permissions": "*"
-    }
-}
-```
-
-Then run:
+Install the package via Composer:
 
 ```bash
-composer update
+composer require saeedvir/laravel-permissions
 ```
+
+The package will automatically register its service provider.
 
 ### Step 2: Publish Configuration
 
