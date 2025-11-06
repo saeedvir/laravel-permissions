@@ -1,0 +1,59 @@
+{
+    "name": "saeedvir/laravel-permissions",
+    "description": "A highly optimized role and permission package for Laravel 11/12 with caching, multiple guards, wildcard permissions, super admin, and Laravel Gate integration",
+    "keywords": [
+        "laravel",
+        "permissions",
+        "roles",
+        "rbac",
+        "authorization",
+        "access-control",
+        "laravel-11",
+        "laravel-12",
+        "guards",
+        "wildcard-permissions"
+    ],
+    "homepage": "https://github.com/saeedvir/laravel-permissions",
+    "type": "library",
+    "license": "MIT",
+    "authors": [
+        {
+            "name": "Saeedvir",
+            "email": "saeed.es91@gmail.com",
+            "role": "Developer"
+        }
+    ],
+    "support": {
+        "issues": "https://github.com/saeedvir/laravel-permissions/issues",
+        "source": "https://github.com/saeedvir/laravel-permissions"
+    },
+    "require": {
+        "php": "^8.2",
+        "illuminate/support": "^11.0|^12.0",
+        "illuminate/database": "^11.0|^12.0",
+        "illuminate/cache": "^11.0|^12.0"
+    },
+    "require-dev": {
+        "orchestra/testbench": "^9.0",
+        "phpunit/phpunit": "^11.0|^12.0"
+    },
+    "autoload": {
+        "psr-4": {
+            "Saeedvir\\LaravelPermissions\\": "src/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "Saeedvir\\LaravelPermissions\\Tests\\": "tests/"
+        }
+    },
+    "extra": {
+        "laravel": {
+            "providers": [
+                "Saeedvir\\LaravelPermissions\\PermissionServiceProvider"
+            ]
+        }
+    },
+    "minimum-stability": "stable",
+    "prefer-stable": true
+}
