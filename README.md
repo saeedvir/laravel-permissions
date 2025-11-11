@@ -9,7 +9,7 @@ A highly optimized role and permission package for Laravel 11/12 with advanced f
 - [Document for LLMs and AI code editors](https://context7.com/saeedvir/laravel-permissions)
 
 - [Chat with AI for This Package](https://context7.com/saeedvir/laravel-permissions?tab=chat)
-- 
+
 ## ✨ Features
 
 ### Core Features
