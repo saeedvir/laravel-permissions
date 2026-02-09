@@ -3,8 +3,7 @@
 namespace Saeedvir\LaravelPermissions;
 
 use Illuminate\Support\ServiceProvider;
-use Illuminate\Support\Facades\Route;
-use Illuminate\Support\Facades\Gate;
+use Illuminate\Contracts\Auth\Access\Gate as GateContract;
 use Saeedvir\LaravelPermissions\Services\PermissionCache;
 use Saeedvir\LaravelPermissions\Middleware\CheckRole;
 use Saeedvir\LaravelPermissions\Middleware\CheckPermission;
@@ -17,14 +16,14 @@ class PermissionServiceProvider extends ServiceProvider
      */
     public function register(): void
     {
+        // Merge package config
         $this->mergeConfigFrom(
-            __DIR__.'/../config/permissions.php', 'permissions'
+            __DIR__ . '/../config/permissions.php',
+            'permissions'
         );
 
-        // Register PermissionCache as singleton
-        $this->app->singleton(PermissionCache::class, function ($app) {
-            return new PermissionCache();
-        });
+        // Register PermissionCache singleton
+        $this->app->singleton(PermissionCache::class);
     }
 
     /**
@@ -32,27 +31,33 @@ class PermissionServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
+        // Only run publishing & migrations in console
+        if ($this->app->runningInConsole()) {
+            $this->bootForConsole();
+        }
+
+        $this->registerMiddlewares();
+        $this->registerBladeDirectives();
+        $this->registerGate();
+    }
+
+    /**
+     * Console-specific boot logic.
+     */
+    protected function bootForConsole(): void
+    {
         // Publish config
         $this->publishes([
-            __DIR__.'/../config/permissions.php' => config_path('permissions.php'),
+            __DIR__ . '/../config/permissions.php' => config_path('permissions.php'),
         ], 'permissions-config');
 
         // Publish migrations
         $this->publishes([
-            __DIR__.'/../database/migrations' => database_path('migrations'),
+            __DIR__ . '/../database/migrations' => database_path('migrations'),
         ], 'permissions-migrations');
 
         // Load migrations
-        $this->loadMigrationsFrom(__DIR__.'/../database/migrations');
-
-        // Register middlewares
-        $this->registerMiddlewares();
-
-        // Register Blade directives
-        $this->registerBladeDirectives();
-
-        // NEW: Register with Laravel Gate
-        $this->registerGate();
+        $this->loadMigrationsFrom(__DIR__ . '/../database/migrations');
     }
 
     /**
@@ -74,110 +79,126 @@ class PermissionServiceProvider extends ServiceProvider
     {
         $blade = $this->app['blade.compiler'];
 
-        // @role('admin')
-        $blade->directive('role', function ($expression) {
-            return "<?php if(auth()->check() && auth()->user()->hasRole({$expression})): ?>";
-        });
-        $blade->directive('endrole', function () {
-            return '<?php endif; ?>';
-        });
+        /*
+        |--------------------------------------------------------------------------
+        | Role Directives
+        |--------------------------------------------------------------------------
+        */
 
-        // @hasrole('admin')
-        $blade->directive('hasrole', function ($expression) {
-            return "<?php if(auth()->check() && auth()->user()->hasRole({$expression})): ?>";
-        });
-        $blade->directive('endhasrole', function () {
-            return '<?php endif; ?>';
-        });
+        $blade->directive('role', fn ($exp) =>
+            $this->compileAuthDirective('hasRole', $exp)
+        );
 
-        // @permission('create-post')
-        $blade->directive('permission', function ($expression) {
-            return "<?php if(auth()->check() && auth()->user()->hasPermission({$expression})): ?>";
-        });
-        $blade->directive('endpermission', function () {
-            return '<?php endif; ?>';
-        });
+        $blade->directive('hasrole', fn ($exp) =>
+            $this->compileAuthDirective('hasRole', $exp)
+        );
 
-        // @haspermission('create-post')
-        $blade->directive('haspermission', function ($expression) {
-            return "<?php if(auth()->check() && auth()->user()->hasPermission({$expression})): ?>";
-        });
-        $blade->directive('endhaspermission', function () {
-            return '<?php endif; ?>';
-        });
+        $blade->directive('endrole', fn () => '<?php endif; ?>');
+        $blade->directive('endhasrole', fn () => '<?php endif; ?>');
 
-        // @hasanyrole(['admin', 'editor'])
-        $blade->directive('hasanyrole', function ($expression) {
-            return "<?php if(auth()->check() && auth()->user()->hasAnyRole({$expression})): ?>";
-        });
-        $blade->directive('endhasanyrole', function () {
-            return '<?php endif; ?>';
-        });
+        /*
+        |--------------------------------------------------------------------------
+        | Permission Directives
+        |--------------------------------------------------------------------------
+        */
 
-        // @hasallroles(['admin', 'editor'])
-        $blade->directive('hasallroles', function ($expression) {
-            return "<?php if(auth()->check() && auth()->user()->hasAllRoles({$expression})): ?>";
-        });
-        $blade->directive('endhasallroles', function () {
-            return '<?php endif; ?>';
-        });
+        $blade->directive('permission', fn ($exp) =>
+            $this->compileAuthDirective('hasPermission', $exp)
+        );
 
-        // @hasanypermission(['create-post', 'edit-post'])
-        $blade->directive('hasanypermission', function ($expression) {
-            return "<?php if(auth()->check() && auth()->user()->hasAnyPermission({$expression})): ?>";
-        });
-        $blade->directive('endhasanypermission', function () {
-            return '<?php endif; ?>';
-        });
+        $blade->directive('haspermission', fn ($exp) =>
+            $this->compileAuthDirective('hasPermission', $exp)
+        );
 
-        // @hasallpermissions(['create-post', 'edit-post'])
-        $blade->directive('hasallpermissions', function ($expression) {
-            return "<?php if(auth()->check() && auth()->user()->hasAllPermissions({$expression})): ?>";
-        });
-        $blade->directive('endhasallpermissions', function () {
-            return '<?php endif; ?>';
-        });
+        $blade->directive('endpermission', fn () => '<?php endif; ?>');
+        $blade->directive('endhaspermission', fn () => '<?php endif; ?>');
 
-        // @isSuperAdmin
-        $blade->directive('isSuperAdmin', function () {
-            return "<?php if(auth()->check() && auth()->user()->isSuperAdmin()): ?>";
-        });
-        $blade->directive('endisSuperAdmin', function () {
-            return '<?php endif; ?>';
-        });
+        /*
+        |--------------------------------------------------------------------------
+        | Multi Role / Permission
+        |--------------------------------------------------------------------------
+        */
+
+        $blade->directive('hasanyrole', fn ($exp) =>
+            $this->compileAuthDirective('hasAnyRole', $exp)
+        );
+
+        $blade->directive('hasallroles', fn ($exp) =>
+            $this->compileAuthDirective('hasAllRoles', $exp)
+        );
+
+        $blade->directive('hasanypermission', fn ($exp) =>
+            $this->compileAuthDirective('hasAnyPermission', $exp)
+        );
+
+        $blade->directive('hasallpermissions', fn ($exp) =>
+            $this->compileAuthDirective('hasAllPermissions', $exp)
+        );
+
+        $blade->directive('endhasanyrole', fn () => '<?php endif; ?>');
+        $blade->directive('endhasallroles', fn () => '<?php endif; ?>');
+        $blade->directive('endhasanypermission', fn () => '<?php endif; ?>');
+        $blade->directive('endhasallpermissions', fn () => '<?php endif; ?>');
+
+        /*
+        |--------------------------------------------------------------------------
+        | Super Admin
+        |--------------------------------------------------------------------------
+        */
+
+        $blade->directive('isSuperAdmin', fn () =>
+            $this->compileAuthDirective('isSuperAdmin')
+        );
+
+        $blade->directive('endisSuperAdmin', fn () => '<?php endif; ?>');
     }
 
     /**
-     * NEW: Register permissions with Laravel Gate.
-     * This integrates the package with Laravel's native authorization system.
+     * Compile reusable auth-based Blade directive.
+     */
+    protected function compileAuthDirective(string $method, ?string $expression = null): string
+    {
+        $call = $expression
+            ? "auth()->user()->{$method}({$expression})"
+            : "auth()->user()->{$method}()";
+
+        return "<?php if(auth()->check() && {$call}): ?>";
+    }
+
+    /**
+     * Register permissions with Laravel Gate.
      */
     protected function registerGate(): void
     {
-        if (!config('permissions.gate.enabled', true)) {
+        $gateConfig = config('permissions.gate', []);
+
+        if (!($gateConfig['enabled'] ?? true)) {
             return;
         }
 
-        Gate::before(function ($user, $ability) {
+        /** @var GateContract $gate */
+        $gate = $this->app->make(GateContract::class);
+
+        $gate->before(function ($user, string $ability) use ($gateConfig) {
+
             if (!method_exists($user, 'hasPermission')) {
                 return null;
             }
 
-            // Check if before callback is enabled
-            if (!config('permissions.gate.before_callback', true)) {
+            if (!($gateConfig['before_callback'] ?? true)) {
                 return null;
             }
 
-            // Super admin bypasses all gates
+            // Super admin bypass
             if (method_exists($user, 'isSuperAdmin') && $user->isSuperAdmin()) {
                 return true;
             }
 
-            // Check if user has permission
+            // Permission check
             if ($user->hasPermission($ability)) {
                 return true;
             }
 
-            // Don't interfere with other gate checks
             return null;
         });
     }
