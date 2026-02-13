@@ -463,6 +463,11 @@ Checks if user is authenticated:
 Route::get('/dashboard', function () {
     return view('dashboard');
 })->middleware('check.auth');
+
+//redirect to ./admin-login if Auth::check() === false
+Route::get('/dashboard', function () {
+    return view('dashboard');
+})->middleware('check.auth:./admin-login');
 ```
 
 ### 2. CheckRole Middleware
